@@ -15,7 +15,7 @@ INCLUDES = -I STM32CubeF4/Drivers/CMSIS/Include \
 
 .DEFAULT_GOAL := main.hex
 
-OBJS = startup.o main.o
+OBJS = startup.o main.o delay.o
 
 $(OBJS): Makefile stm32f411.ld
 

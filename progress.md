@@ -54,3 +54,42 @@
 - PLLQ = 7 reserves the 48 MHz output so USB can be added later without re-tuning the PLL
 - VCO = 200 MHz (minimum of valid range) keeps PLL power consumption low
 - All timing references point to RM0383 sections for traceability
+
+## Pinout Validation
+
+After fetching the pinout from [stm32-base.org](https://stm32-base.org/boards/STM32F411CEU6-WeAct-Black-Pill-V2.0.html),
+the pin assignments were confirmed and added to `SPEC.md`:
+
+- **User LED** — PC13 (right header pin 19, active-low sink)
+- **USART1** — PB6 (TX) / PB7 (RX), left header pins 14/15, AF7
+- **USB** — PA11 (DM) / PA12 (DP)
+- **SWD** — PA13 (SWDIO) / PA14 (SWCLK) on bottom-edge header
+- **KEY button** — PA0 (right header pin 15, active low)
+
+The board is a Blackpill V3.1; pinout is identical to V2.0.
+
+## Iteration 3 — Clock Stability & SysTick Timing
+
+**Goal:** Move from guessed-cycle delay loops to a deterministic SysTick-based delay,
+add HSE failure fallback, and follow CMSIS clock conventions.
+
+**What was done:**
+- Renamed `system_clock_init` → `SystemInit` (CMSIS convention)
+- Exported `SystemCoreClock` (extern `uint32_t` matching `system_stm32f4xx.h`)
+- Added HSE startup timeout (50K iterations); falls back to PLL from HSI (M=16)
+  at 100 MHz if the crystal fails to start
+- Created `delay.h` / `delay.c` — `delay_us()` and `delay_ms()` using SysTick
+  in polling mode (24-bit counter, chunked for long delays)
+- Replaced `delay(5000000)` in `main.c` with `delay_ms(100)`
+- Updated `Makefile` to include `delay.o`
+
+**Files created/modified:**
+- `startup.c` — `SystemInit` with HSE fallback, `SystemCoreClock` export
+- `delay.c` / `delay.h` — SysTick-based delay functions (new)
+- `main.c` — uses `delay_ms(100)` instead of guessed loop
+
+**Key decisions:**
+- SysTick clocked from AHB (no division) for microsecond-level resolution
+- HSE timeout prevents board lockup on dead crystal; reverts to HSI+PLL silently
+- Delay functions chunk at 24-bit SysTick max so they work at any clock speed
+- Kept `SystemInit` name to match CMSIS expectations (though no `system_stm32f4xx.c` is linked)

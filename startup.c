@@ -5,6 +5,8 @@ extern int main(void);
 
 extern char _sidata, _sdata, _edata, _sbss, _ebss, _estack;
 
+uint32_t SystemCoreClock = 16000000;
+
 void Default_Handler(void) {
     for (;;) __WFE();
 }
@@ -21,12 +23,14 @@ void PendSV_Handler(void)    __attribute__((weak, alias("Default_Handler")));
 void SysTick_Handler(void)   __attribute__((weak, alias("Default_Handler")));
 
 /* ---------------------------------------------------------------------------
- * System clock: 100 MHz from 25 MHz HSE via PLL
+ * SystemInit  —  clock tree initialisation (CMSIS convention)
+ *
+ * Target: 100 MHz from either HSE (25 MHz) or HSI (16 MHz) via PLL.
  *
  * Clock tree (RM0383 §6.2, §6.3):
  *
- *   HSE (25 MHz) ──┬─> PLLSRC ─> PLLM(/25) ─> VCO_in (1 MHz)
- *                  │
+ *   HSE (25 MHz) ─┬─> PLLSRC ─> PLLM(/25) ─> VCO_in (1 MHz)
+ *                  │               └─ or PLLM(/16) from HSI
  *                  └─> RTC etc.
  *
  *   VCO_in (1 MHz) ─> PLLN(x200) ─> VCO_out (200 MHz)
@@ -43,10 +47,20 @@ void SysTick_Handler(void)   __attribute__((weak, alias("Default_Handler")));
  * Power: VOS = Scale 1 for operation up to 100 MHz (§3.3.1 Table 6)
  * --------------------------------------------------------------------------- */
 
-static void system_clock_init(void) {
-    /* Enable HSE oscillator and wait for ready (§6.2.2) */
+#define HSE_TIMEOUT 50000
+
+void SystemInit(void) {
+    int use_hse = 0;
+
+    /* Enable HSE oscillator with timeout (§6.2.2) */
     RCC->CR |= RCC_CR_HSEON;
-    while (!(RCC->CR & RCC_CR_HSERDY));
+    for (int i = 0; i < HSE_TIMEOUT; i++) {
+        if (RCC->CR & RCC_CR_HSERDY) { use_hse = 1; break; }
+    }
+
+    if (!use_hse) {
+        RCC->CR &= ~RCC_CR_HSEON;
+    }
 
     /* Enable power interface clock and set VOS to Scale 1 (§3.3.1) */
     RCC->APB1ENR |= RCC_APB1ENR_PWREN;
@@ -60,12 +74,20 @@ static void system_clock_init(void) {
     RCC->CFGR &= ~(RCC_CFGR_HPRE | RCC_CFGR_PPRE1 | RCC_CFGR_PPRE2);
     RCC->CFGR |= RCC_CFGR_HPRE_DIV1 | RCC_CFGR_PPRE1_DIV2 | RCC_CFGR_PPRE2_DIV1;
 
-    /* Configure PLL: HSE source, M=25, N=200, P=/2(100 MHz), Q=/7(48 MHz) (§6.3) */
-    RCC->PLLCFGR = RCC_PLLCFGR_PLLSRC_HSE
-                 | (25 << RCC_PLLCFGR_PLLM_Pos)
-                 | (200 << RCC_PLLCFGR_PLLN_Pos)
-                 | (0 << RCC_PLLCFGR_PLLP_Pos) /* PLLP = 0 => /2 */
-                 | (7  << RCC_PLLCFGR_PLLQ_Pos);
+    /* PLL from HSE (M=25) or HSI (M=16), N=200, P=/2, Q=/7 (§6.3) */
+    if (use_hse) {
+        RCC->PLLCFGR = RCC_PLLCFGR_PLLSRC_HSE
+                     | (25 << RCC_PLLCFGR_PLLM_Pos)
+                     | (200 << RCC_PLLCFGR_PLLN_Pos)
+                     | (0 << RCC_PLLCFGR_PLLP_Pos)
+                     | (7  << RCC_PLLCFGR_PLLQ_Pos);
+    } else {
+        RCC->PLLCFGR = (0 << RCC_PLLCFGR_PLLSRC_Pos)
+                     | (16 << RCC_PLLCFGR_PLLM_Pos)
+                     | (200 << RCC_PLLCFGR_PLLN_Pos)
+                     | (0 << RCC_PLLCFGR_PLLP_Pos)
+                     | (7  << RCC_PLLCFGR_PLLQ_Pos);
+    }
 
     /* Enable PLL and wait for lock (§6.3.2) */
     RCC->CR |= RCC_CR_PLLON;
@@ -74,6 +96,8 @@ static void system_clock_init(void) {
     /* Select PLL as system clock and wait for switch (§6.4.1) */
     RCC->CFGR = (RCC->CFGR & ~RCC_CFGR_SW) | RCC_CFGR_SW_PLL;
     while ((RCC->CFGR & RCC_CFGR_SWS) != RCC_CFGR_SWS_PLL);
+
+    SystemCoreClock = 100000000;
 }
 
 __attribute__((section(".isr_vector"))) void (*const vector_table[])(void) = {
@@ -100,7 +124,7 @@ void Reset_Handler(void) {
 
     SCB->VTOR = (uintptr_t)vector_table;
 
-    system_clock_init();
+    SystemInit();
 
     main();
 
