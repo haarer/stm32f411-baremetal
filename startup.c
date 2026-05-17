@@ -20,15 +20,60 @@ void DebugMon_Handler(void)  __attribute__((weak, alias("Default_Handler")));
 void PendSV_Handler(void)    __attribute__((weak, alias("Default_Handler")));
 void SysTick_Handler(void)   __attribute__((weak, alias("Default_Handler")));
 
+/* ---------------------------------------------------------------------------
+ * System clock: 100 MHz from 25 MHz HSE via PLL
+ *
+ * Clock tree (RM0383 §6.2, §6.3):
+ *
+ *   HSE (25 MHz) ──┬─> PLLSRC ─> PLLM(/25) ─> VCO_in (1 MHz)
+ *                  │
+ *                  └─> RTC etc.
+ *
+ *   VCO_in (1 MHz) ─> PLLN(x200) ─> VCO_out (200 MHz)
+ *                                      │
+ *                                      ├─> PLLP(/2) ─> SYSCLK (100 MHz)
+ *                                      ├─> PLLQ(/7) ─> 48 MHz (USB SDIO)
+ *                                      └─> PLLR         (48xxx only)
+ *
+ *   SYSCLK (100 MHz) ─> AHB presc(/1) ─> HCLK  (100 MHz)
+ *                       ├─> APB1 presc(/2) ─> PCLK1 (50 MHz)   (§6.4.1)
+ *                       └─> APB2 presc(/1) ─> PCLK2 (100 MHz)  (§6.4.1)
+ *
+ * Flash: 3 wait states required at 100 MHz in Scale 1 mode (§3.5.1 Table 10)
+ * Power: VOS = Scale 1 for operation up to 100 MHz (§3.3.1 Table 6)
+ * --------------------------------------------------------------------------- */
+
 static void system_clock_init(void) {
-    RCC->CR |= RCC_CR_HSION;
-    while (!(RCC->CR & RCC_CR_HSIRDY));
+    /* Enable HSE oscillator and wait for ready (§6.2.2) */
+    RCC->CR |= RCC_CR_HSEON;
+    while (!(RCC->CR & RCC_CR_HSERDY));
 
-    FLASH->ACR = FLASH_ACR_PRFTEN | FLASH_ACR_ICEN | FLASH_ACR_DCEN | FLASH_ACR_LATENCY_0WS;
+    /* Enable power interface clock and set VOS to Scale 1 (§3.3.1) */
+    RCC->APB1ENR |= RCC_APB1ENR_PWREN;
+    PWR->CR = (PWR->CR & ~PWR_CR_VOS) | (PWR_CR_VOS_0 | PWR_CR_VOS_1);
 
-    RCC->CFGR = 0;
-    RCC->CFGR |= RCC_CFGR_SW_HSI;
-    while ((RCC->CFGR & RCC_CFGR_SWS) != RCC_CFGR_SWS_HSI);
+    /* Configure flash: 3 wait states, prefetch + icache + dcache (§3.5.1) */
+    FLASH->ACR = FLASH_ACR_PRFTEN | FLASH_ACR_ICEN | FLASH_ACR_DCEN
+               | FLASH_ACR_LATENCY_3WS;
+
+    /* AHB = SYSCLK / 1, APB1 = HCLK / 2, APB2 = HCLK / 1 (§6.4.1) */
+    RCC->CFGR &= ~(RCC_CFGR_HPRE | RCC_CFGR_PPRE1 | RCC_CFGR_PPRE2);
+    RCC->CFGR |= RCC_CFGR_HPRE_DIV1 | RCC_CFGR_PPRE1_DIV2 | RCC_CFGR_PPRE2_DIV1;
+
+    /* Configure PLL: HSE source, M=25, N=200, P=/2(100 MHz), Q=/7(48 MHz) (§6.3) */
+    RCC->PLLCFGR = RCC_PLLCFGR_PLLSRC_HSE
+                 | (25 << RCC_PLLCFGR_PLLM_Pos)
+                 | (200 << RCC_PLLCFGR_PLLN_Pos)
+                 | (0 << RCC_PLLCFGR_PLLP_Pos) /* PLLP = 0 => /2 */
+                 | (7  << RCC_PLLCFGR_PLLQ_Pos);
+
+    /* Enable PLL and wait for lock (§6.3.2) */
+    RCC->CR |= RCC_CR_PLLON;
+    while (!(RCC->CR & RCC_CR_PLLRDY));
+
+    /* Select PLL as system clock and wait for switch (§6.4.1) */
+    RCC->CFGR = (RCC->CFGR & ~RCC_CFGR_SW) | RCC_CFGR_SW_PLL;
+    while ((RCC->CFGR & RCC_CFGR_SWS) != RCC_CFGR_SWS_PLL);
 }
 
 __attribute__((section(".isr_vector"))) void (*const vector_table[])(void) = {

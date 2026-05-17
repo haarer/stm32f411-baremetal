@@ -22,9 +22,9 @@ int main(void) {
 
     for (;;) {
         GPIOC->BSRR = (1 << LED_PIN) << 16;
-        delay(800000);
+        delay(5000000);
         GPIOC->BSRR = (1 << LED_PIN);
-        delay(800000);
+        delay(5000000);
     }
 
     return 0;
