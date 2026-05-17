@@ -3,7 +3,7 @@
 ## Goal
 
 A minimal bare-metal firmware image that configures the necessary hardware
-and prints "hello world" on the serial console.
+and prints "hello world" on the serial console. Then it provides a simple command line allowing to turn the led on and off.
 
 ## Hardware
 
@@ -84,6 +84,15 @@ Orientation: USB-C at top, SWD at bottom, components facing up.
 | 3 | SWCLK | PA14    | |
 | 4 | GND   | —       | Ground |
 
+## Boot Sequence & Main Loop
+
+1. **Clock init** — HSE→PLL→100 MHz with flash wait states and Scale 1 voltage
+2. **5 fast LED blinks** — PC13 toggles 5 times at 80 ms on/off (visual alive check)
+3. **UART init** — USART1 on PB6/PB7 at 115200 8N1
+4. **Print** `hello world` followed by `> ` prompt
+5. **CLI init** — line buffer cleared, prompt printed
+6. **Main loop** — polls UART every 10 µs for commands. No LED blink during CLI operation.
+
 ## Software Constraints
 
 - **Bare metal** — no STM HAL libraries
@@ -155,9 +164,9 @@ Orientation: USB-C at top, SWD at bottom, components facing up.
 
 Verify the firmware outputs the expected string on the serial console:
 
-1. Open the FTDI serial port **before** resetting the MCU (the firmware sends "hello world\n" ~800 ms after boot, so opening after reset will miss it)
-2. Reset the MCU via `st-flash --reset` or the board's reset button
-3. Read from the serial port and assert the output matches `hello world\n\r`
+1. Open the FTDI serial port **before** resetting the MCU (the firmware sends "hello world\n" ~800 ms after boot (5 blinks × 160 ms + UART init), so opening after reset will miss it)
+2. Reset the MCU via `st-flash reset`
+3. Read from the serial port and assert the output matches `hello world\n\r> `
 
 The test suite lives in `test/` and is run via `make test`:
 
@@ -165,16 +174,33 @@ The test suite lives in `test/` and is run via `make test`:
 make test
 ```
 
+### CLI commands
+
+After boot the firmware accepts these commands via UART:
+
+| Command | Response | Description |
+|---------|----------|-------------|
+| `help` | list of commands | Show available commands |
+| `hello` | `hello world` | Print greeting |
+| `led on` | `ok` | Turn PC13 LED on |
+| `led off` | `ok` | Turn PC13 LED off |
+| `echo <text>` | `<text>` | Echo back the argument |
+| *(empty line)* | — | ignored, prompt re-printed |
+
 ### Test suite
 
 Located in `test/` and managed with `uv`:
 
 ```
 test/
+├── conftest.py       # session-scoped flash via pytest_sessionstart hook
 ├── pyproject.toml    # uv project config
 ├── uv.lock           # pinned dependencies
-└── test_loopback.py  # loopback test
+├── main.py           # uv init scaffold (unused)
+└── test_loopback.py  # 6 loopback test cases
 ```
+
+The session hook in `conftest.py` flashes the firmware once via `st-flash --reset` before any tests run. Each test then calls `st-flash reset` independently as a precondition, opening the serial port before resetting to capture the boot output.
 
 Python dependency management uses `uv`. Add new packages with:
 

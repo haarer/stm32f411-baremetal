@@ -34,3 +34,13 @@ void uart_puts(const char *s) {
 void uart_write(const char *buf, uint32_t len) {
     for (uint32_t i = 0; i < len; i++) uart_putc(buf[i]);
 }
+
+int uart_getc(void) {
+    uint32_t sr = USART1->SR;
+    if (!(sr & USART_SR_RXNE)) return -1;
+    if (sr & (USART_SR_ORE | USART_SR_FE)) {
+        (void)USART1->DR;
+        return -1;
+    }
+    return (uint8_t)USART1->DR;
+}

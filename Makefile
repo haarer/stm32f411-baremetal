@@ -15,7 +15,7 @@ INCLUDES = -I STM32CubeF4/Drivers/CMSIS/Include \
 
 .DEFAULT_GOAL := main.hex
 
-OBJS = startup.o main.o delay.o uart.o
+OBJS = startup.o main.o delay.o uart.o cli.o
 
 $(OBJS): Makefile stm32f411.ld
 
@@ -43,6 +43,7 @@ clean:
 	rm -f *.o *.hex *.elf *.map
 
 test:
+	uv sync --directory test
 	uv run --directory test python -m pytest -v
 
 .PHONY: clean cube flash test

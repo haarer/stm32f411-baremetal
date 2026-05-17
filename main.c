@@ -2,6 +2,7 @@
 #include "stm32f4xx.h"
 #include "delay.h"
 #include "uart.h"
+#include "cli.h"
 
 #define LED_PIN 13
 
@@ -24,12 +25,11 @@ int main(void) {
 
     uart_init();
     uart_puts("hello world\n");
+    cli_init();
 
     for (;;) {
-        GPIOC->BSRR = (1 << LED_PIN) << 16;
-        delay_ms(500);
-        GPIOC->BSRR = (1 << LED_PIN);
-        delay_ms(500);
+        cli_poll();
+        delay_us(10);
     }
 
     return 0;

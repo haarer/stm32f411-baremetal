@@ -1,12 +1,13 @@
 import subprocess
+from pathlib import Path
 
-FIRMWARE = "/workspace/stm32f411-baremetal/main.hex"
-FIRMWARE_DIR = "/workspace/stm32f411-baremetal"
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+FIRMWARE = str(PROJECT_ROOT / "main.hex")
 
 
 def pytest_sessionstart(session):
     subprocess.run(
         ["st-flash", "--reset", "--format", "ihex", "write", FIRMWARE],
-        cwd=FIRMWARE_DIR,
+        cwd=PROJECT_ROOT,
         capture_output=True,
     )

@@ -148,3 +148,33 @@ add HSE failure fallback, and follow CMSIS clock conventions.
 - Use `uv` for Python dependency management (reproducible, fast, no system-wide installs)
 - Flash once per session in `conftest.py`, then each test calls `st-flash reset` as a precondition
 - Test opens serial port before reset to avoid missing the boot-time output (~800 ms window)
+
+## Iteration 6 — UART Reception & CLI
+
+**Goal:** Add UART RX support and a simple command-line interface.
+
+**What was done:**
+- Added `uart_getc()` to `uart.c` — polled RX with ORE/FE error handling
+- Created `cli.c` / `cli.h` — line-based command processor with commands: `help`, `hello`, `led on`, `led off`, `echo <text>`
+- Updated `main.c` to initialize CLI after boot and poll UART at 10 µs intervals (fast enough for 115200 baud)
+- Fixed UART overrun bug: `uart_getc` clears error flags before reading, main loop polls every 10 µs instead of every 1 ms
+- Added 6 test cases: boot message, hello, echo, led on/off, help, unknown command
+- Documented CLI commands in `SPEC.md`
+
+**Files created/modified:**
+- `uart.h` — added `uart_getc()` declaration
+- `uart.c` — added `uart_getc()` with ORE/FE handling
+- `cli.c` — CLI implementation (new)
+- `cli.h` — CLI header (new)
+- `main.c` — CLI init and fast-poll loop
+- `Makefile` — added `cli.o`
+- `test/test_loopback.py` — 6 test cases
+- `SPEC.md` — CLI command table
+- `progress.md` — this entry
+
+**Key decisions:**
+- Poll UART every 10 µs in the main loop to avoid overrun at 115200 baud (87 µs per byte)
+- Handle ORE/FE in `uart_getc` by reading SR+DR to clear error flags
+- Line-based CLI with `\n` as terminator, `\r` silently ignored
+- Commands return `\n`-terminated strings (expanded to `\n\r` by `uart_putc`)
+- **Update:** Removed continuous LED blink from main loop to reduce visual noise during CLI use; only the 5 initial boot flashes remain
