@@ -93,3 +93,29 @@ add HSE failure fallback, and follow CMSIS clock conventions.
 - HSE timeout prevents board lockup on dead crystal; reverts to HSI+PLL silently
 - Delay functions chunk at 24-bit SysTick max so they work at any clock speed
 - Kept `SystemInit` name to match CMSIS expectations (though no `system_stm32f4xx.c` is linked)
+
+## Iteration 4 — UART Driver & Hello World
+
+**Goal:** Implement USART1 on PB6 (TX) / PB7 (RX) at 115200 8N1 and print "hello world".
+
+**What was done:**
+- Created `uart.h` / `uart.c` — USART1 driver with polled TX
+  - Enables GPIOB clock, configures PB6/PB7 as AF7 push-pull
+  - Enables USART1 clock on APB2
+  - Baud rate: 115200 (BRR = 868 = 100 MHz / (16 × 115200))
+  - Newline handling: `\n` emits `\r\n`
+  - Provides `uart_putc`, `uart_puts`, `uart_write`
+- Updated `main.c` — 5 quick blinks (80 ms) before UART init to verify basic
+  function, then prints "hello world", then slow 500 ms blink loop
+- Added `uart.o` to Makefile OBJS
+
+**Files created/modified:**
+- `uart.h` — UART API (new)
+- `uart.c` — USART1 implementation (new)
+- `main.c` — 5 pre-init blinks + hello world output
+- `Makefile` — added `uart.o`
+
+**Key decisions:**
+- Polled TX (no interrupts) keeps it simple at this stage
+- `\n` → `\r\n` translation so output works on any terminal
+- 5 quick blinks before UART serve as a visual "alive" check independent of serial
