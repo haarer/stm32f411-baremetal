@@ -119,3 +119,32 @@ add HSE failure fallback, and follow CMSIS clock conventions.
 - Polled TX (no interrupts) keeps it simple at this stage
 - `\n` → `\r\n` translation so output works on any terminal
 - 5 quick blinks before UART serve as a visual "alive" check independent of serial
+
+## Iteration 5 — Test Suite & Environment Setup
+
+**Goal:** Establish a reproducible test environment and automated loopback test.
+
+**What was done:**
+- Installed `stlink`, `python3`, `py3-usb`, `py3-pip`, `pyserial`, `uv` (new dependencies for this iteration)
+- Created host udev rules (`MODE="0666"`) for ST-Link and FTDI device access
+- Created `test/` directory as a uv-managed Python project
+- Added `test/pyproject.toml` — uv project config with `pyserial` and `pytest`
+- Added `test/conftest.py` — session-scoped `st-flash` before any tests
+- Added `test/test_loopback.py` — resets target via `st-flash reset`, captures serial, asserts `hello world\n\r`
+- Added `make test` target using `uv run --directory test`
+- Documented hardware architecture (ASCII diagram), interconnections table, udev rules, and podman config in `SPEC.md`
+- Updated `.gitignore` for test artifacts (`.venv/`, `uv.lock`, `__pycache__/`, `.pytest_cache/`)
+
+**Files created/modified:**
+- `test/pyproject.toml` — uv project (new)
+- `test/conftest.py` — session flash fixture (new)
+- `test/test_loopback.py` — loopback test (new)
+- `Makefile` — added `test` target
+- `SPEC.md` — added hardware architecture, interconnections, test suite, udev, podman sections
+- `.gitignore` — added test artifacts
+- `progress.md` — this entry
+
+**Key decisions:**
+- Use `uv` for Python dependency management (reproducible, fast, no system-wide installs)
+- Flash once per session in `conftest.py`, then each test calls `st-flash reset` as a precondition
+- Test opens serial port before reset to avoid missing the boot-time output (~800 ms window)

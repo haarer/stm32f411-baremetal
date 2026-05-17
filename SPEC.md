@@ -157,25 +157,38 @@ Verify the firmware outputs the expected string on the serial console:
 
 1. Open the FTDI serial port **before** resetting the MCU (the firmware sends "hello world\n" ~800 ms after boot, so opening after reset will miss it)
 2. Reset the MCU via `st-flash --reset` or the board's reset button
-3. Read from the serial port and assert the output matches `hello world\r\n`
+3. Read from the serial port and assert the output matches `hello world\n\r`
 
-Example using Python + pyserial:
+The test suite lives in `test/` and is run via `make test`:
 
-```python
-import serial, subprocess, threading, time
-
-def flash():
-    time.sleep(0.5)
-    subprocess.run(['st-flash', '--reset', '--format', 'ihex',
-                    'write', 'main.hex'], cwd='/workspace/stm32f411-baremetal')
-
-threading.Thread(target=flash, daemon=True).start()
-
-ser = serial.Serial('/dev/ttyUSB0', 115200, timeout=5)
-data = ser.read(100)
-ser.close()
-assert data == b'hello world\r\n', f'Unexpected output: {data!r}'
+```bash
+make test
 ```
+
+### Test suite
+
+Located in `test/` and managed with `uv`:
+
+```
+test/
+├── pyproject.toml    # uv project config
+├── uv.lock           # pinned dependencies
+└── test_loopback.py  # loopback test
+```
+
+Python dependency management uses `uv`. Add new packages with:
+
+```bash
+uv add --directory test <package>
+```
+
+Add dev-only packages (e.g. test runners) with:
+
+```bash
+uv add --dev --directory test <package>
+```
+
+The `pyproject.toml` specifies the project metadata and dependencies. Lockfiles ensure reproducible test environments.
 
 ### Host configuration (udev)
 

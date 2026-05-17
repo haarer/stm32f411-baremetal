@@ -42,4 +42,7 @@ cube: STM32CubeF4/Drivers/CMSIS/Device/ST/STM32F4xx/Include/stm32f4xx.h
 clean:
 	rm -f *.o *.hex *.elf *.map
 
-.PHONY: clean cube flash
+test:
+	uv run --directory test python -m pytest -v
+
+.PHONY: clean cube flash test
