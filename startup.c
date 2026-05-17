@@ -21,6 +21,7 @@ void SVC_Handler(void)       __attribute__((weak, alias("Default_Handler")));
 void DebugMon_Handler(void)  __attribute__((weak, alias("Default_Handler")));
 void PendSV_Handler(void)    __attribute__((weak, alias("Default_Handler")));
 void SysTick_Handler(void)   __attribute__((weak, alias("Default_Handler")));
+void USART1_Handler(void)    __attribute__((weak, alias("Default_Handler")));
 
 /* ---------------------------------------------------------------------------
  * SystemInit  —  clock tree initialisation (CMSIS convention)
@@ -114,6 +115,7 @@ __attribute__((section(".isr_vector"))) void (*const vector_table[])(void) = {
     0,
     PendSV_Handler,
     SysTick_Handler,
+    [16 + 37] = USART1_Handler,
 };
 
 void Reset_Handler(void) {

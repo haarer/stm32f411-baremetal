@@ -7,15 +7,15 @@ ARCH_FLAGS  = -mthumb -mcpu=cortex-m4 -mfloat-abi=hard -mfpu=fpv4-sp-d16
 OPT_FLAGS   = -O2 -ffunction-sections -fdata-sections
 WARN_FLAGS  = -Wall -Wextra -Werror
 CFLAGS      = -std=gnu11 $(ARCH_FLAGS) $(OPT_FLAGS) $(WARN_FLAGS) -ggdb3
-LDFLAGS     = -nostartfiles -nodefaultlibs $(ARCH_FLAGS) $(OPT_FLAGS) $(WARN_FLAGS) -ggdb3 \
-              -Wl,-gc-sections,-Map,main.map -Wl,--cref -Tstm32f411.ld -lgcc
+LDFLAGS     = -nostartfiles $(ARCH_FLAGS) $(OPT_FLAGS) $(WARN_FLAGS) -ggdb3 \
+              -Wl,-gc-sections,-Map,main.map -Wl,--cref -Tstm32f411.ld -lc -lgcc
 
 INCLUDES = -I STM32CubeF4/Drivers/CMSIS/Include \
            -I STM32CubeF4/Drivers/CMSIS/Device/ST/STM32F4xx/Include
 
 .DEFAULT_GOAL := main.hex
 
-OBJS = startup.o main.o delay.o uart.o cli.o
+OBJS = startup.o main.o delay.o uart.o cli.o syscall.o
 
 $(OBJS): Makefile stm32f411.ld
 

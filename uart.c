@@ -1,6 +1,31 @@
 #define STM32F411xE
 #include "stm32f4xx.h"
 #include "uart.h"
+#include "ringbuf.h"
+
+static struct Ringbuffer tx_buf;
+static struct Ringbuffer rx_buf;
+
+void USART1_Handler(void) {
+    uint32_t sr = USART1->SR;
+
+    if (sr & USART_SR_RXNE) {
+        uint8_t c = (uint8_t)USART1->DR;
+        if (!(sr & (USART_SR_ORE | USART_SR_FE))) {
+            if (ringbuffer_free(&rx_buf) > 0) {
+                ringbuffer_put_head(&rx_buf, c);
+            }
+        }
+    }
+
+    if ((sr & USART_SR_TXE) && !ringbuffer_empty(&tx_buf)) {
+        USART1->DR = ringbuffer_get_tail(&tx_buf);
+    }
+
+    if (ringbuffer_empty(&tx_buf)) {
+        USART1->CR1 &= ~USART_CR1_TXEIE;
+    }
+}
 
 void uart_init(void) {
     RCC->AHB1ENR |= RCC_AHB1ENR_GPIOBEN;
@@ -15,32 +40,31 @@ void uart_init(void) {
 
     USART1->BRR = 868;
 
-    USART1->CR1 = USART_CR1_UE | USART_CR1_TE | USART_CR1_RE;
+    ringbuffer_clear(&tx_buf);
+    ringbuffer_clear(&rx_buf);
+
+    USART1->CR1 = USART_CR1_UE | USART_CR1_TE | USART_CR1_RE | USART_CR1_RXNEIE;
 }
 
 void uart_putc(char c) {
-    while (!(USART1->SR & USART_SR_TXE));
-    USART1->DR = (uint8_t)c;
+    while (ringbuffer_free(&tx_buf) == 0);
+    ringbuffer_put_head(&tx_buf, c);
     if (c == '\n') {
-        while (!(USART1->SR & USART_SR_TXE));
-        USART1->DR = (uint8_t)'\r';
+        while (ringbuffer_free(&tx_buf) == 0);
+        ringbuffer_put_head(&tx_buf, '\r');
     }
+    USART1->CR1 |= USART_CR1_TXEIE;
 }
 
 void uart_puts(const char *s) {
     while (*s) uart_putc(*s++);
 }
 
-void uart_write(const char *buf, uint32_t len) {
-    for (uint32_t i = 0; i < len; i++) uart_putc(buf[i]);
+int uart_getc(void) {
+    if (ringbuffer_empty(&rx_buf)) return -1;
+    return ringbuffer_get_tail(&rx_buf);
 }
 
-int uart_getc(void) {
-    uint32_t sr = USART1->SR;
-    if (!(sr & USART_SR_RXNE)) return -1;
-    if (sr & (USART_SR_ORE | USART_SR_FE)) {
-        (void)USART1->DR;
-        return -1;
-    }
-    return (uint8_t)USART1->DR;
+void uart_flush(void) {
+    while (USART1->CR1 & USART_CR1_TXEIE);
 }

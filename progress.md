@@ -178,3 +178,27 @@ add HSE failure fallback, and follow CMSIS clock conventions.
 - Line-based CLI with `\n` as terminator, `\r` silently ignored
 - Commands return `\n`-terminated strings (expanded to `\n\r` by `uart_putc`)
 - **Update:** Removed continuous LED blink from main loop to reduce visual noise during CLI use; only the 5 initial boot flashes remain
+
+## Iteration 7 — Interrupt-Based UART with Ring Buffers & Newlib Integration
+
+**Goal:** Upgrade UART from polling to interrupt-driven TX/RX with ring buffers and integrate newlib syscalls.
+
+**What was done:**
+- Created `ringbuf.h` — 256-byte ring buffer with inline accessors
+- Rewrote `uart.c` — interrupt-based USART1 (TX via ring buffer + TXEIE, RX captures on RXNE)
+- Added `USART1_Handler` to vector table in `startup.c`
+- Created `syscall.c` — newlib stubs for `_write`, `_read`, `_sbrk`, and other required syscalls
+- Updated `main.c` — removed polling loop, added `NVIC_EnableIRQ(USART1_IRQn)`
+- Updated `Makefile` — added `syscall.o`, linked newlib (`-lc`)
+- Fixed newline order: `uart_putc('\n')` now sends `\n\r` (not `\r\n`)
+
+**Files created/modified:**
+- `ringbuf.h` (new)
+- `uart.h`, `uart.c` — interrupt-driven with buffers
+- `startup.c` — vector table entry
+- `syscall.c` (new)
+- `main.c` — NVIC enable, removed polling
+- `Makefile` — newlib link
+
+**Testing:** All 6 tests passing ✓
+- Boot message, hello, echo, led on/off, help, unknown command

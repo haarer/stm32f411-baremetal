@@ -4,5 +4,5 @@
 void uart_init(void);
 void uart_putc(char c);
 void uart_puts(const char *s);
-void uart_write(const char *buf, uint32_t len);
-int uart_getc(void);
+int  uart_getc(void);
+void uart_flush(void);
