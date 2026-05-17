@@ -104,3 +104,121 @@ Orientation: USB-C at top, SWD at bottom, components facing up.
 - Running inside a Podman container
 - Install any needed tools via `apk` (Alpine Linux)
 - Connected hardware: ST-Link V2 programmer, FTDI adapter on PB6/PB7 (USART1)
+
+## Hardware Architecture
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│                      Host Computer                           │
+│  ┌───────────────────────────────────────────────────────┐   │
+│  │                 Podman Container                      │   │
+│  │                    opencode                           │   │
+│  └────────────────────────┬──────────────────────────────┘   │
+│                           │                                  │
+│                           ▼                                  │
+│                    ┌──────────────┐                          │
+│                    │     USB      │                          │
+│                    └──────┬───────┘                          │
+└───────────────────────────┼──────────────────────────────────┘
+                            │
+               ┌────────────┼────────────┐
+               │                         │
+               ▼                         ▼
+       ┌───────────────┐        ┌──────────────┐
+       │ ST-Link V2    │        │ FTDI FT232R  │
+       │ Programmer    │        │              │
+       └───────┬───────┘        └──────┬───────┘
+               │ SWD                   │ UART
+               ▼                       ▼
+       ┌──────────────────────────────────────┐
+       │    Blackpill V3.1 (STM32F411CEU6)    │
+       │                                      │
+       └──────────────────────────────────────┘
+```
+
+### Interconnections
+
+| Interface | Host side | Adapter | Blackpill pin | Notes |
+|-----------|-----------|---------|---------------|-------|
+| USB       | `/dev/bus/usb` | ST-Link V2 | — | libusb enumeration for st-flash |
+| USB       | `/dev/ttyUSB0` | FTDI FT232R | — | serial over USB CDC |
+| SWD       | — | ST-Link SWD header pin 2 | PA13 (SWDIO) | programming/debug data |
+| SWD       | — | ST-Link SWD header pin 3 | PA14 (SWCLK) | programming/debug clock |
+| SWD       | — | ST-Link SWD header pin 4 | GND | common ground |
+| UART      | — | FTDI TX | PB7 (USART1_RX) | MCU receive |
+| UART      | — | FTDI RX | PB6 (USART1_TX) | MCU transmit |
+| UART      | — | FTDI GND | GND | common ground |
+
+## Testing
+
+### Loopback test
+
+Verify the firmware outputs the expected string on the serial console:
+
+1. Open the FTDI serial port **before** resetting the MCU (the firmware sends "hello world\n" ~800 ms after boot, so opening after reset will miss it)
+2. Reset the MCU via `st-flash --reset` or the board's reset button
+3. Read from the serial port and assert the output matches `hello world\r\n`
+
+Example using Python + pyserial:
+
+```python
+import serial, subprocess, threading, time
+
+def flash():
+    time.sleep(0.5)
+    subprocess.run(['st-flash', '--reset', '--format', 'ihex',
+                    'write', 'main.hex'], cwd='/workspace/stm32f411-baremetal')
+
+threading.Thread(target=flash, daemon=True).start()
+
+ser = serial.Serial('/dev/ttyUSB0', 115200, timeout=5)
+data = ser.read(100)
+ser.close()
+assert data == b'hello world\r\n', f'Unexpected output: {data!r}'
+```
+
+### Host configuration (udev)
+
+The container uses a user namespace (root in container maps to a non-root UID on the host). USB device nodes created by udev with restrictive permissions (e.g. `nobody:nobody`, mode `660`) are inaccessible to the container root because the owning UID/GID is unmapped.
+
+**Fix:** Create udev rules on the host that make the devices world-accessible or owned by the correct host UID:
+
+```bash
+# ST-Link V2 — libusb access via /dev/bus/usb
+echo 'SUBSYSTEM=="usb", ATTRS{idVendor}=="0483", ATTRS{idProduct}=="3748", MODE="0666"' \
+  | sudo tee /etc/udev/rules.d/99-stlink.rules
+
+# FTDI FT232R — serial port access
+echo 'SUBSYSTEM=="tty", ATTRS{idVendor}=="0403", ATTRS{idProduct}=="6001", MODE="0666"' \
+  | sudo tee /etc/udev/rules.d/99-ftdi.rules
+
+sudo udevadm control --reload-rules
+# Unplug and re-plug both devices, or trigger:
+sudo udevadm trigger
+```
+
+### Podman container configuration
+
+Pass both USB devices into the container. Prefer `--device` for the tty device (creates the node with correct perms inside the container) and a bind mount for the USB bus (libusb enumeration):
+
+```bash
+podman run -it \
+    -v "$(pwd)/workspace:/workspace" \
+    --device /dev/ttyUSB0:rw \
+    --device /dev/bus/usb:/dev/bus/usb \
+    --privileged \
+    --group-add keep-groups \
+    --security-opt label=disable \
+    --name stm32-dev \
+    ghcr.io/anomalyco/opencode:latest
+```
+
+| Flag | Purpose |
+|------|---------|
+| `--device /dev/ttyUSB0:rw` | Passes the FTDI serial device with correct cgroup and permission handling |
+| `--device /dev/bus/usb:/dev/bus/usb` | Mounts the USB filesystem so libusb can enumerate devices (needed by st-flash) |
+| `--privileged` | Grants full capabilities and device access (simpler than enumerating each device cgroup) |
+| `--group-add keep-groups` | Preserves supplementary groups from the host, useful when udev assigns device nodes to specific groups |
+| `--security-opt label=disable` | Disables SELinux/AppArmor label confinement inside the container |
+
+Without `--device /dev/ttyUSB0:rw`, the tty device node is inherited from the host bind-mount (`-v /dev:/dev`) with the host's original permissions and ownership, which may be inaccessible due to UID/GID unmapping in the user namespace.
