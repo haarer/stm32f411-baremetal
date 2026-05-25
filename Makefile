@@ -51,6 +51,22 @@ EXTRA_soft-fp   := -u _printf_float
 EXTRA_hard-nofp :=
 EXTRA_hard-fp   := -u _printf_float
 
+# --- Stdio variants (inherit from base, add USE_STDIO) ---
+ARCH_soft-nofp-stdio  := $(ARCH_soft-nofp)
+ARCH_soft-fp-stdio    := $(ARCH_soft-fp)
+ARCH_hard-nofp-stdio  := $(ARCH_hard-nofp)
+ARCH_hard-fp-stdio    := $(ARCH_hard-fp)
+
+DEFS_soft-nofp-stdio  := $(DEFS_soft-nofp) -DUSE_STDIO
+DEFS_soft-fp-stdio    := $(DEFS_soft-fp) -DUSE_STDIO
+DEFS_hard-nofp-stdio  := $(DEFS_hard-nofp) -DUSE_STDIO
+DEFS_hard-fp-stdio    := $(DEFS_hard-fp) -DUSE_STDIO
+
+EXTRA_soft-nofp-stdio := $(EXTRA_soft-nofp)
+EXTRA_soft-fp-stdio   := $(EXTRA_soft-fp)
+EXTRA_hard-nofp-stdio := $(EXTRA_hard-nofp)
+EXTRA_hard-fp-stdio   := $(EXTRA_hard-fp)
+
 define variant_rule =
 build/$1/%.o: %.c | build/$1/
 	$$(CC) -c -o $$@ $$(ARCH_$1) $$(OPT_FLAGS) $$(WARN_FLAGS) -ggdb3 $$(DEFS_$1) $$(INCLUDES) $$<
@@ -71,22 +87,46 @@ $(eval $(call variant_rule,soft-nofp))
 $(eval $(call variant_rule,soft-fp))
 $(eval $(call variant_rule,hard-nofp))
 $(eval $(call variant_rule,hard-fp))
+$(eval $(call variant_rule,soft-nofp-stdio))
+$(eval $(call variant_rule,soft-fp-stdio))
+$(eval $(call variant_rule,hard-nofp-stdio))
+$(eval $(call variant_rule,hard-fp-stdio))
 
-VARIANT_HEXES = $(addprefix $(BUILD_DIR)/,soft-nofp/main.hex soft-fp/main.hex \
-                                        hard-nofp/main.hex hard-fp/main.hex)
+VARIANTS = soft-nofp soft-fp hard-nofp hard-fp \
+           soft-nofp-stdio soft-fp-stdio hard-nofp-stdio hard-fp-stdio
+
+VARIANT_HEXES = $(addprefix $(BUILD_DIR)/,$(addsuffix /main.hex,$(VARIANTS)))
 
 variants: $(VARIANT_HEXES)
 	$(SIZE) $(BUILD_DIR)/*/main.elf
+
+variant-sizes: $(VARIANT_HEXES)
+	@printf '\n=== Code size by variant ===\n'
+	@printf '%-22s %6s %6s %6s %6s\n' Variant text data bss dec
+	@for v in $(VARIANTS); do \
+	  set -- $$($(SIZE) $(BUILD_DIR)/$$v/main.elf | tail -1); \
+	  printf '%-22s %6s %6s %6s %6s\n' $$v $$1 $$2 $$3 $$4; \
+	done
 
 soft-nofp: build/soft-nofp/main.hex
 soft-fp:   build/soft-fp/main.hex
 hard-nofp: build/hard-nofp/main.hex
 hard-fp:   build/hard-fp/main.hex
+soft-nofp-stdio: build/soft-nofp-stdio/main.hex
+soft-fp-stdio:   build/soft-fp-stdio/main.hex
+hard-nofp-stdio: build/hard-nofp-stdio/main.hex
+hard-fp-stdio:   build/hard-fp-stdio/main.hex
 
 flash-hard-fp: build/hard-fp/main.hex
 	st-flash --reset --format ihex write $<
 
 flash-soft-fp: build/soft-fp/main.hex
+	st-flash --reset --format ihex write $<
+
+flash-hard-fp-stdio: build/hard-fp-stdio/main.hex
+	st-flash --reset --format ihex write $<
+
+flash-soft-fp-stdio: build/soft-fp-stdio/main.hex
 	st-flash --reset --format ihex write $<
 
 STM32CubeF4/Drivers/CMSIS/Device/ST/STM32F4xx/Include/stm32f4xx.h:
@@ -103,4 +143,7 @@ test:
 	uv sync --directory test
 	uv run --directory test python -m pytest -v
 
-.PHONY: clean cube flash test variants soft-nofp soft-fp hard-nofp hard-fp flash-hard-fp flash-soft-fp
+.PHONY: clean cube flash test variants variant-sizes \
+        soft-nofp soft-fp hard-nofp hard-fp \
+        soft-nofp-stdio soft-fp-stdio hard-nofp-stdio hard-fp-stdio \
+        flash-hard-fp flash-soft-fp flash-hard-fp-stdio flash-soft-fp-stdio

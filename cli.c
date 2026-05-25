@@ -3,6 +3,9 @@
 #include "cli.h"
 #include "uart.h"
 #include <stdint.h>
+#ifdef USE_STDIO
+#include <stdio.h>
+#endif
 
 #define LED_PIN 13
 #define LINE_BUF_SIZE 64
@@ -54,6 +57,16 @@ void cli_init(void) {
     print_prompt();
 }
 
+#ifdef USE_STDIO
+static void handle_printf_test(void) {
+    printf("hello from printf\n");
+    printf("int: %d, hex: %#x, unsigned: %u\n", -42, 0xDEAD, 300);
+#ifdef USE_FLOAT
+    printf("float: %.2f, pi=%.5f\n", 3.14f, 3.1415926535f);
+#endif
+}
+#endif
+
 static void handle_help(void) {
     uart_puts("available commands:\n");
     uart_puts("  help           show this message\n");
@@ -64,6 +77,9 @@ static void handle_help(void) {
     uart_puts("  ping           ping-pong liveness check\n");
     uart_puts("  echobin <n>    echo back n raw binary bytes\n");
     uart_puts("  pktsend <n>    send n bytes of test pattern\n");
+#ifdef USE_STDIO
+    uart_puts("  printf_test    test printf via newlib stdio\n");
+#endif
 }
 
 static void handle_hello(void) {
@@ -100,6 +116,10 @@ void cli_process_line(const char *line) {
         handle_help();
     } else if (str_eq(line, "hello")) {
         handle_hello();
+#ifdef USE_STDIO
+    } else if (str_eq(line, "printf_test")) {
+        handle_printf_test();
+#endif
     } else if (str_eq(line, "ping")) {
         handle_ping();
     } else if (str_has_prefix(line, "echobin")) {
