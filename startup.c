@@ -128,6 +128,11 @@ void Reset_Handler(void) {
 
     SystemInit();
 
+    /* Enable FPU (CP10, CP11 full access) before any hard-float code runs */
+    SCB->CPACR |= 0xF << 20;
+    __DSB();
+    __ISB();
+
     main();
 
     for (;;) __NOP();

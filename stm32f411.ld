@@ -29,6 +29,21 @@ SECTIONS
     _etext = .;
   } >FLASHROM
 
+  .ARM.extab :
+  {
+    . = ALIGN(4);
+    *(.ARM.extab*)
+    . = ALIGN(4);
+  } >FLASHROM
+
+  .ARM.exidx :
+  {
+    __exidx_start = .;
+    *(.ARM.exidx*)
+    __exidx_end = .;
+    . = ALIGN(4);
+  } >FLASHROM
+
   _sidata = .;
 
   .data : AT(_sidata)

@@ -223,4 +223,4 @@ add HSE failure fallback, and follow CMSIS clock conventions.
 - `ringbuf.h` — added `volatile` to `head` and `tail`
 - `test/test_loopback.py` — updated boot message expectation for Iteration 7's extra boot line
 
-**Testing:** All 6 tests passing ✓, `pktsend` verified at sizes 100, 254, 255, 256, 300, 500, 1000.
+**Testing:** All 14 tests passing ✓ (added ping, empty line, echobin, pktsend boundary/large, long line truncation), `pktsend` verified at sizes 100, 254, 255, 256, 300, 500, 1000.

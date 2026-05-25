@@ -25,6 +25,7 @@ int main(void) {
 
     uart_init();
     NVIC_EnableIRQ(USART1_IRQn);
+
     uart_puts("hello world\n");
     uart_puts("stdio connected via interrupt-based UART with ring buffers\n");
 

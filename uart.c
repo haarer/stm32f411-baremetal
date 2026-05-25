@@ -74,6 +74,12 @@ int uart_getc(void) {
     return ringbuffer_get_tail(&rx_buf);
 }
 
+void uart_putc_raw(char c) {
+    while (ringbuffer_free(&tx_buf) == 0);
+    ringbuffer_put_head(&tx_buf, c);
+    USART1->CR1 |= USART_CR1_TXEIE;
+}
+
 void uart_flush(void) {
     while (!ringbuffer_empty(&tx_buf));
     while (USART1->CR1 & USART_CR1_TXEIE);
