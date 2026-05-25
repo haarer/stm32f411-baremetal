@@ -89,9 +89,10 @@ Orientation: USB-C at top, SWD at bottom, components facing up.
 1. **Clock init** — HSE→PLL→100 MHz with flash wait states and Scale 1 voltage
 2. **5 fast LED blinks** — PC13 toggles 5 times at 80 ms on/off (visual alive check)
 3. **UART init** — USART1 on PB6/PB7 at 115200 8N1
-4. **Print** `hello world` followed by `> ` prompt
-5. **CLI init** — line buffer cleared, prompt printed
-6. **Main loop** — polls UART every 10 µs for commands. No LED blink during CLI operation.
+4. **Print** `hello world\n`
+5. **Print** `stdio connected via interrupt-based UART with ring buffers\n`
+6. **CLI init** — line buffer cleared, prompt `> ` printed
+7. **Main loop** — polls UART every iteration for commands. No LED blink during CLI operation.
 
 ## Software Constraints
 
@@ -164,9 +165,9 @@ Orientation: USB-C at top, SWD at bottom, components facing up.
 
 Verify the firmware outputs the expected string on the serial console:
 
-1. Open the FTDI serial port **before** resetting the MCU (the firmware sends "hello world\n" ~800 ms after boot (5 blinks × 160 ms + UART init), so opening after reset will miss it)
+1. Open the FTDI serial port **before** resetting the MCU (the firmware sends the boot banner ~800 ms after boot (5 blinks × 160 ms + UART init), so opening after reset will miss it)
 2. Reset the MCU via `st-flash reset`
-3. Read from the serial port and assert the output matches `hello world\n\r> `
+3. Read from the serial port and assert the output matches `hello world\n\rstdio connected via interrupt-based UART with ring buffers\n\r> `
 
 The test suite lives in `test/` and is run via `make test`:
 
@@ -182,9 +183,12 @@ After boot the firmware accepts these commands via UART:
 |---------|----------|-------------|
 | `help` | list of commands | Show available commands |
 | `hello` | `hello world` | Print greeting |
+| `ping` | `pong` | Liveness check |
 | `led on` | `ok` | Turn PC13 LED on |
 | `led off` | `ok` | Turn PC13 LED off |
 | `echo <text>` | `<text>` | Echo back the argument |
+| `echobin <n>` | `ok` + `n` raw bytes | Echo back `n` binary bytes from host |
+| `pktsend <n>` | `ok` + `n` byte pattern | Send `n` bytes of counting pattern `(i & 0xFF)` |
 | *(empty line)* | — | ignored, prompt re-printed |
 
 ### Test suite
@@ -197,10 +201,29 @@ test/
 ├── pyproject.toml    # uv project config
 ├── uv.lock           # pinned dependencies
 ├── main.py           # uv init scaffold (unused)
-└── test_loopback.py  # 6 loopback test cases
+└── test_loopback.py  # 14 loopback test cases
 ```
 
 The session hook in `conftest.py` flashes the firmware once via `st-flash --reset` before any tests run. Each test then calls `st-flash reset` independently as a precondition, opening the serial port before resetting to capture the boot output.
+
+Tests are run via `make test` and cover the following:
+
+| Test | What it verifies |
+|------|-----------------|
+| `test_boot_message` | Full boot output matches expected string |
+| `test_hello_command` | `hello` → `hello world` |
+| `test_echo_command` | `echo <text>` → `<text>` |
+| `test_led_on_off` | `led on` / `led off` → `ok` |
+| `test_help_command` | lists all commands |
+| `test_unknown_command` | garbage input → `error: unknown command` |
+| `test_ping` | `ping` → `pong` |
+| `test_empty_line` | bare `\n` → echo + prompt, no error |
+| `test_echobin_small` | `echobin 100` → 100 raw bytes echoed back |
+| `test_pktsend_small` | `pktsend 10` — small payload |
+| `test_pktsend_buffer_fill` | `pktsend 255` — exactly fills ring buffer |
+| `test_pktsend_exceed_buffer` | `pktsend 256` — one past buffer capacity |
+| `test_pktsend_large` | `pktsend 512` — wraps pattern twice, stress test |
+| `test_long_line_truncation` | 66-char line → truncated to 63 chars |
 
 Python dependency management uses `uv`. Add new packages with:
 

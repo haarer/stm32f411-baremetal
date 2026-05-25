@@ -5,7 +5,7 @@ import subprocess
 SERIAL_PORT = os.environ.get("TEST_SERIAL_PORT", "/dev/ttyUSB0")
 BAUDRATE = 115200
 TIMEOUT = 5
-EXPECTED_BOOT = b"hello world\n\r> "
+EXPECTED_BOOT = b"hello world\n\rstdio connected via interrupt-based UART with ring buffers\n\r> "
 
 
 def reset_target():
@@ -18,7 +18,6 @@ def send_cmd(ser, cmd):
     resp = ser.read_until(b"> ")
     if resp.endswith(b"> "):
         resp = resp[:-2]
-    # Strip local echo of the sent command
     echo_prefix = cmd + b"\n\r"
     if resp.startswith(echo_prefix):
         resp = resp[len(echo_prefix):]
@@ -82,4 +81,126 @@ def test_unknown_command():
     ser.read_until(b"> ")
     resp = send_cmd(ser, b"notacommand")
     ser.close()
+    assert b"error: unknown command" in resp
+
+
+def test_ping():
+    reset_target()
+    ser = serial.Serial(SERIAL_PORT, BAUDRATE, timeout=TIMEOUT)
+    ser.read_until(b"> ")
+    resp = send_cmd(ser, b"ping")
+    ser.close()
+    assert resp == b"pong\n\r", f"Expected pong, got {resp!r}"
+
+
+def test_empty_line():
+    reset_target()
+    ser = serial.Serial(SERIAL_PORT, BAUDRATE, timeout=TIMEOUT)
+    ser.read_until(b"> ")
+    ser.reset_input_buffer()
+    ser.write(b"\n")
+    resp = ser.read_until(b"> ")
+    ser.close()
+    assert resp == b"\n\r> ", f"Expected echo + prompt, got {resp!r}"
+
+
+def test_echobin_small():
+    n = 100
+    cmd = f"echobin {n}".encode()
+    data = bytes(range(n))
+
+    reset_target()
+    ser = serial.Serial(SERIAL_PORT, BAUDRATE, timeout=TIMEOUT)
+    ser.read_until(b"> ")
+    ser.reset_input_buffer()
+    ser.write(cmd + b"\n")
+    ser.write(data)
+    resp = ser.read_until(b"> ")
+    ser.close()
+
+    if resp.endswith(b"> "):
+        resp = resp[:-2]
+    echo = cmd + b"\n\r"
+    if resp.startswith(echo):
+        resp = resp[len(echo):]
+    assert resp.startswith(b"ok\n\r"), f"Expected ok prefix, got {resp[:20]!r}"
+    resp = resp[4:]
+    assert resp == data, f"Expected {n} echoed bytes, got {len(resp)}"
+
+
+def test_pktsend_small():
+    n = 10
+    cmd = f"pktsend {n}".encode()
+    expected = bytes(i & 0xFF for i in range(n))
+
+    reset_target()
+    ser = serial.Serial(SERIAL_PORT, BAUDRATE, timeout=TIMEOUT)
+    ser.read_until(b"> ")
+    resp = send_cmd(ser, cmd)
+    ser.close()
+    assert resp.startswith(b"ok\n\r"), f"Expected ok, got {resp[:20]!r}"
+    data = resp[4:]
+    assert data == expected, f"Expected {len(expected)} bytes, got {len(data)}"
+
+
+def test_pktsend_buffer_fill():
+    n = 255
+    cmd = f"pktsend {n}".encode()
+    expected = bytes(i & 0xFF for i in range(n))
+
+    reset_target()
+    ser = serial.Serial(SERIAL_PORT, BAUDRATE, timeout=TIMEOUT)
+    ser.read_until(b"> ")
+    resp = send_cmd(ser, cmd)
+    ser.close()
+    assert resp.startswith(b"ok\n\r"), f"Expected ok, got {resp[:20]!r}"
+    data = resp[4:]
+    assert data == expected, f"Expected {len(expected)} bytes, got {len(data)}"
+
+
+def test_pktsend_exceed_buffer():
+    n = 256
+    cmd = f"pktsend {n}".encode()
+    expected = bytes(i & 0xFF for i in range(n))
+
+    reset_target()
+    ser = serial.Serial(SERIAL_PORT, BAUDRATE, timeout=TIMEOUT)
+    ser.read_until(b"> ")
+    resp = send_cmd(ser, cmd)
+    ser.close()
+    assert resp.startswith(b"ok\n\r"), f"Expected ok, got {resp[:20]!r}"
+    data = resp[4:]
+    assert data == expected, f"Expected {len(expected)} bytes, got {len(data)}"
+
+
+def test_pktsend_large():
+    n = 512
+    cmd = f"pktsend {n}".encode()
+    expected = bytes(i & 0xFF for i in range(n))
+
+    reset_target()
+    ser = serial.Serial(SERIAL_PORT, BAUDRATE, timeout=TIMEOUT)
+    ser.read_until(b"> ")
+    resp = send_cmd(ser, cmd)
+    ser.close()
+    assert resp.startswith(b"ok\n\r"), f"Expected ok, got {resp[:20]!r}"
+    data = resp[4:]
+    assert data == expected, f"Expected {len(expected)} bytes, got {len(data)}"
+
+
+def test_long_line_truncation():
+    reset_target()
+    ser = serial.Serial(SERIAL_PORT, BAUDRATE, timeout=TIMEOUT)
+    ser.read_until(b"> ")
+
+    ser.reset_input_buffer()
+    cmd = b"a" * 66
+    ser.write(cmd + b"\n")
+    resp = ser.read_until(b"> ")
+    ser.close()
+
+    line_echo = b"a" * 63 + b"\n\r"
+    assert resp.startswith(line_echo), (
+        f"Expected 62-char echo, got prefix {resp[:70]!r}"
+    )
     assert b"error: unknown command" in resp

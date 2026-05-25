@@ -11,10 +11,8 @@ void USART1_Handler(void) {
 
     if (sr & USART_SR_RXNE) {
         uint8_t c = (uint8_t)USART1->DR;
-        if (!(sr & (USART_SR_ORE | USART_SR_FE))) {
-            if (ringbuffer_free(&rx_buf) > 0) {
-                ringbuffer_put_head(&rx_buf, c);
-            }
+        if (ringbuffer_free(&rx_buf) > 0) {
+            ringbuffer_put_head(&rx_buf, c);
         }
     }
 
@@ -44,16 +42,27 @@ void uart_init(void) {
     ringbuffer_clear(&rx_buf);
 
     USART1->CR1 = USART_CR1_UE | USART_CR1_TE | USART_CR1_RE | USART_CR1_RXNEIE;
+
+    while (!(USART1->SR & USART_SR_TXE));
 }
 
 void uart_putc(char c) {
     while (ringbuffer_free(&tx_buf) == 0);
-    ringbuffer_put_head(&tx_buf, c);
+    ringbuffer_put_head(&tx_buf, (uint8_t)c);
+    USART1->CR1 |= USART_CR1_TXEIE;
     if (c == '\n') {
         while (ringbuffer_free(&tx_buf) == 0);
         ringbuffer_put_head(&tx_buf, '\r');
+        USART1->CR1 |= USART_CR1_TXEIE;
     }
-    USART1->CR1 |= USART_CR1_TXEIE;
+}
+
+void uart_write(const char *s, int len) {
+    for (int i = 0; i < len; i++) {
+        while (ringbuffer_free(&tx_buf) == 0);
+        ringbuffer_put_head(&tx_buf, (uint8_t)s[i]);
+        USART1->CR1 |= USART_CR1_TXEIE;
+    }
 }
 
 void uart_puts(const char *s) {
@@ -66,5 +75,7 @@ int uart_getc(void) {
 }
 
 void uart_flush(void) {
+    while (!ringbuffer_empty(&tx_buf));
     while (USART1->CR1 & USART_CR1_TXEIE);
+    while (!(USART1->SR & USART_SR_TC));
 }

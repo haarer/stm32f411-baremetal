@@ -3,8 +3,8 @@
 
 struct Ringbuffer {
     uint8_t  buf[256];
-    uint16_t head;
-    uint16_t tail;
+    volatile uint16_t head;
+    volatile uint16_t tail;
 };
 
 inline uint16_t ringbuffer_avail(const struct Ringbuffer *rb) { return rb->head - rb->tail; }

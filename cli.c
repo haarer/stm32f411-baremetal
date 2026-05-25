@@ -39,6 +39,15 @@ static void skip_spaces(const char **p) {
     while (**p == ' ') (*p)++;
 }
 
+static int parse_int(const char **p) {
+    int n = 0;
+    while (**p >= '0' && **p <= '9') {
+        n = n * 10 + (**p - '0');
+        (*p)++;
+    }
+    return n;
+}
+
 void cli_init(void) {
     led_state = 0;
     line_len = 0;
@@ -52,10 +61,36 @@ static void handle_help(void) {
     uart_puts("  led on         turn LED on\n");
     uart_puts("  led off        turn LED off\n");
     uart_puts("  echo <text>    echo back text\n");
+    uart_puts("  ping           ping-pong liveness check\n");
+    uart_puts("  echobin <n>    echo back n raw binary bytes\n");
+    uart_puts("  pktsend <n>    send n bytes of test pattern\n");
 }
 
 static void handle_hello(void) {
     uart_puts("hello world\n");
+}
+
+static void handle_ping(void) {
+    uart_puts("pong\n");
+}
+
+static void handle_echobin(const char *args) {
+    int n = parse_int(&args);
+    uart_puts("ok\n");
+    for (int i = 0; i < n; i++) {
+        int c;
+        while ((c = uart_getc()) < 0);
+        uart_write((const char *)&c, 1);
+    }
+}
+
+static void handle_pktsend(const char *args) {
+    int n = parse_int(&args);
+    uart_puts("ok\n");
+    for (int i = 0; i < n; i++) {
+        char c = (char)(i & 0xFF);
+        uart_write(&c, 1);
+    }
 }
 
 void cli_process_line(const char *line) {
@@ -65,6 +100,16 @@ void cli_process_line(const char *line) {
         handle_help();
     } else if (str_eq(line, "hello")) {
         handle_hello();
+    } else if (str_eq(line, "ping")) {
+        handle_ping();
+    } else if (str_has_prefix(line, "echobin")) {
+        const char *args = line + 7;
+        skip_spaces(&args);
+        handle_echobin(args);
+    } else if (str_has_prefix(line, "pktsend")) {
+        const char *args = line + 7;
+        skip_spaces(&args);
+        handle_pktsend(args);
     } else if (str_eq(line, "led on")) {
         led_on();
         uart_puts("ok\n");

@@ -202,3 +202,25 @@ add HSE failure fallback, and follow CMSIS clock conventions.
 
 **Testing:** All 6 tests passing ✓
 - Boot message, hello, echo, led on/off, help, unknown command
+
+## Iteration 8 — Fix pktsend Deadlock & Polled/Interrupt TX Race
+
+**Goal:** Fix `pktsend` hang for payloads ≥ 255 bytes and data corruption for payloads < 256 bytes.
+
+**What was done:**
+
+### Bug 1: Deadlock in `uart_write`
+`uart_write` set `TXEIE` only after completing the loop. When payload ≥ 255 bytes filled the ring buffer, the `while(free == 0)` spin-loop deadlocked because the ISR could never fire to drain it. Fixed by moving `TXEIE` enable inside the loop, after each byte queued.
+
+### Bug 2: Polled vs Interrupt TX Race
+`uart_putc` wrote directly to `USART1->DR` (polled), racing with the ISR which also writes `DR` for ring-buffer TX. For payloads < 256 bytes the for loop finished before the ISR fired, then `print_prompt()`'s polled `uart_putc` overwrote data bytes the ISR was transmitting, causing `> ` to appear mid-stream early. Fixed by converting `uart_putc` to queue through the ring buffer + TXEIE, matching `uart_write`.
+
+### Bug 3: Missing `volatile` on Ring Buffer Head/Tail
+`head`/`tail` in `struct Ringbuffer` were plain `uint16_t`. At `-O2` the compiler could cache them in registers, causing the ISR or main loop to read stale values. Added `volatile` to both fields.
+
+**Files modified:**
+- `uart.c` — moved TXEIE inside `uart_write` loop; rewrote `uart_putc` to use ring buffer
+- `ringbuf.h` — added `volatile` to `head` and `tail`
+- `test/test_loopback.py` — updated boot message expectation for Iteration 7's extra boot line
+
+**Testing:** All 6 tests passing ✓, `pktsend` verified at sizes 100, 254, 255, 256, 300, 500, 1000.
